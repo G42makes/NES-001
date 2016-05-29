@@ -108,4 +108,3 @@ void latchIN() {
   // we assign the value to the global, but inverted so that 1 is pressed, and 0 is not
   controller = ~input;
 }
-
