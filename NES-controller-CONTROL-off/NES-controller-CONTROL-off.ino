@@ -96,6 +96,9 @@ void loop() {
       Serial.println(": Toggle Power Requested");
       led = !led; //invert the current value
       digitalWrite(LED, led);
+      power_state = !power_state;
+      digitalWrite(P_CONT, power_state);
+      controller = 0; //we need to clear the state of the 'controller' as there will be no interrupt to read differently
       delay(2000); // so that we don't toggle it, probaby should be longer
     }
   }
@@ -105,7 +108,11 @@ void loop() {
     Serial.print(": Power Switch State: ");
     if (switch_state) Serial.println("ON"); else Serial.println("OFF");
     digitalWrite(LED, switch_state);
-    digitalWrite(P_CONT, switch_state);
+    if (switch_state != power_state) {
+      Serial.println("Change in power state due to power switch.");
+      power_state = !power_state;
+      digitalWrite(P_CONT, power_state);
+    }
     delay(100);   //debounce
   }
   //delay(500);

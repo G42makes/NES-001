@@ -8,9 +8,9 @@
 
 //Pins
 // I'm using a Pro Trinket 5V for this dev work
-#define LATCH   3
-#define CLOCK   5
-#define DATA    6
+#define CLOCK   14
+#define LATCH   12
+#define DATA    13
 
 //because I want to define stuff clearer:
 #define NONE      0b00000000
