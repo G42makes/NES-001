@@ -1,3 +1,14 @@
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+
+WiFiUDP Udp;
+char packet[255];
+
+const char* ssid = "";
+const char* password = "";
+IPAddress remoteUdpServer(10, 51, 11, 116);
+unsigned int remoteUdpPort = 7869;
+
 //Pins
 #define CLOCK   14
 #define LATCH   12
@@ -32,7 +43,15 @@ void setup() {
   //set all low
   digitalWrite(CLOCK, LOW);
   digitalWrite(LATCH, LOW);
-  
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" connected");
+
 }
 
 void loop() {
@@ -51,7 +70,7 @@ void loop() {
     if (controller & SELECT)  Serial.print("SELECT : "); else Serial.print("       : ");
     if (controller == 0 )     Serial.print("NONE   : "); else Serial.print("       : ");
     
-    Serial.print(": 0x");
+    Serial.print("0x");
     Serial.print(controller, HEX);
     Serial.print(": D: ");
     Serial.print(controller);
@@ -59,6 +78,11 @@ void loop() {
     Serial.println("");
 
     last = controller;
+    packet[0] = controller;
+
+    Udp.beginPacket(remoteUdpServer, remoteUdpPort);
+    Udp.write(packet, 1);
+    Udp.endPacket();
   }
   
   //delay(500);
