@@ -1,13 +1,18 @@
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
 #include <WiFiUdp.h>
 
 WiFiUDP Udp;
+WiFiClient Tcp;
 char packet[255];
 
 const char* ssid = "";
 const char* password = "";
-IPAddress remoteUdpServer(10, 51, 11, 116);
-unsigned int remoteUdpPort = 7869;
+IPAddress remoteServer(10, 51, 11, 116);
+unsigned int remotePort = 7869;
+
+unsigned long mTime;
+const uint8_t nullStr[] = {0x00};
 
 //Pins
 #define CLOCK   14
@@ -44,6 +49,7 @@ void setup() {
   digitalWrite(CLOCK, LOW);
   digitalWrite(LATCH, LOW);
 
+  //connect to WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -52,6 +58,24 @@ void setup() {
   }
   Serial.println(" connected");
 
+  //And send/recieve configs with server
+  if( Tcp.connect(remoteServer, remotePort) ) {
+    Serial.println("Connected to TCP server, sending config");
+    //TODO static JSON string here
+    Tcp.println("name=NES-004");
+    Tcp.println("controlcount=8");
+    Tcp.println("control[0].type=button");
+    Tcp.println("control[0].size=1");
+    Tcp.println("control[0].position=0");
+    Tcp.println("control[0].name=RIGHT");
+    Tcp.write(nullStr, sizeof(nullStr));
+    Serial.println("Done sending TCP data");
+  } else {
+    Serial.println("Failed to connect to TCP server");
+  }
+
+  //initialize the time variable with the current millis value
+  mTime = millis();
 }
 
 void loop() {
@@ -80,12 +104,22 @@ void loop() {
     last = controller;
     packet[0] = controller;
 
-    Udp.beginPacket(remoteUdpServer, remoteUdpPort);
+    Udp.beginPacket(remoteServer, remotePort);
     Udp.write(packet, 1);
     Udp.endPacket();
   }
   
-  //delay(500);
+  if (mTime + 6000 < millis()){
+    //more then 6 seconds since last tcp send(6 for testing, use 60 as default for live
+    //TODO: make that configurable by server
+    //TODO: take into account number wrapping over
+    Serial.println("Sending TCP Update");
+    Tcp.print("Time: ");
+    Tcp.println(millis());
+    Tcp.write(nullStr, sizeof(nullStr));
+    Serial.println("Done TCP Update");
+    mTime = millis();
+  }
 }
 
 byte readControllerNES() {
