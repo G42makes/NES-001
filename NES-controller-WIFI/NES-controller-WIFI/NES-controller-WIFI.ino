@@ -8,8 +8,14 @@ char packet[255];
 
 const char* ssid = "";
 const char* password = "";
-IPAddress remoteServer(10, 51, 11, 116);
+//IPAddress remoteServer(10, 51, 11, 116);
+IPAddress remoteServer(10, 51, 11, 120);
 unsigned int remotePort = 7869;
+
+//Static config information to send to the server to allow it to understand the data format we will use
+//I used http://www.jsoneditoronline.org/ to help design this, but any JSON editor will work
+//Then ran it through http://www.freeformatter.com/json-formatter.html with the javascript escape filter to escape all the quotes quickly.
+const char* jsonString = "{\"name\":\"NES-004\",\"controller\":{\"dataSizeBits\":8,\"inputs\":{\"0\":{\"name\":\"dpad0RIGHT\",\"displayName\":\"Right\",\"oppositeDirection\":\"dpad0LEFT\",\"type\":\"dpadBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"1\":{\"name\":\"dpad0LEFT\",\"displayName\":\"Left\",\"oppositeDirection\":\"dpad0RIGHT\",\"type\":\"dpadBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"2\":{\"name\":\"dpad0DOWN\",\"displayName\":\"Down\",\"oppositeDirection\":\"dpad0Up\",\"type\":\"dpadBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"3\":{\"name\":\"dpad0UP\",\"displayName\":\"Up\",\"oppositeDirection\":\"dpad0DOWN\",\"type\":\"dpadBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"4\":{\"name\":\"buttonA\",\"displayName\":\"A\",\"type\":\"buttonBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"5\":{\"name\":\"buttonB\",\"displayName\":\"B\",\"type\":\"buttonBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"6\":{\"name\":\"START\",\"displayName\":\"Start\",\"type\":\"buttonBoolean\",\"activeValue\":true,\"dataSizeBits\":1},\"7\":{\"name\":\"SELECT\",\"displayName\":\"Select\",\"type\":\"buttonBoolean\",\"activeValue\":true,\"dataSizeBits\":1}}}}";
 
 unsigned long mTime;
 const uint8_t nullStr[] = {0x00};
@@ -38,7 +44,7 @@ void setup() {
   //First we setup serial for debug/input as needed.
   Serial.begin(115200);
   Serial.println("");
-  Serial.println("ESP8266: Online:");
+  Serial.println("ESP8266 Controller: Online:");
 
   //Setup the pins as required:
   pinMode(CLOCK, OUTPUT);
@@ -58,22 +64,15 @@ void setup() {
   }
   Serial.println(" connected");
 
-  //And send/recieve configs with server
+  //Contact the server, send/recv configs
   if( Tcp.connect(remoteServer, remotePort) ) {
-    Serial.println("Connected to TCP server, sending config");
-    //TODO static JSON string here
-    Tcp.println("name=NES-004");
-    Tcp.println("controlcount=8");
-    Tcp.println("control[0].type=button");
-    Tcp.println("control[0].size=1");
-    Tcp.println("control[0].position=0");
-    Tcp.println("control[0].name=RIGHT");
-    Tcp.write(nullStr, sizeof(nullStr));
-    Serial.println("Done sending TCP data");
+    tcpStatusUpdate();
   } else {
-    Serial.println("Failed to connect to TCP server");
+    Serial.print(millis()); //timestamp from boot
+    Serial.println(": Failed to connect to TCP server");
   }
 
+  
   //initialize the time variable with the current millis value
   mTime = millis();
 }
@@ -82,42 +81,19 @@ void loop() {
   byte controller = readControllerNES();
 
   if (last != controller) {
-    Serial.print(millis()); //timestamp from boot
-    Serial.print(": ");
-    if (controller & LEFT)    Serial.print("LEFT   : "); else Serial.print("       : ");
-    if (controller & RIGHT)   Serial.print("RIGHT  : "); else Serial.print("       : ");
-    if (controller & UP)      Serial.print("UP     : "); else Serial.print("       : ");
-    if (controller & DOWN)    Serial.print("DOWN   : "); else Serial.print("       : ");
-    if (controller & BUTTONA) Serial.print("A      : "); else Serial.print("       : ");
-    if (controller & BUTTONB) Serial.print("B      : "); else Serial.print("       : ");
-    if (controller & START)   Serial.print("START  : "); else Serial.print("       : ");
-    if (controller & SELECT)  Serial.print("SELECT : "); else Serial.print("       : ");
-    if (controller == 0 )     Serial.print("NONE   : "); else Serial.print("       : ");
-    
-    Serial.print("0x");
-    Serial.print(controller, HEX);
-    Serial.print(": D: ");
-    Serial.print(controller);
-    
-    Serial.println("");
+    serialPrintStatus(controller);
 
     last = controller;
-    packet[0] = controller;
 
-    Udp.beginPacket(remoteServer, remotePort);
-    Udp.write(packet, 1);
-    Udp.endPacket();
+    udpControllerUpdate(controller);
   }
   
-  if (mTime + 6000 < millis()){
-    //more then 6 seconds since last tcp send(6 for testing, use 60 as default for live
+  if (mTime + 30000 < millis()){
+    //more then 30 seconds since last tcp send
     //TODO: make that configurable by server
     //TODO: take into account number wrapping over
-    Serial.println("Sending TCP Update");
-    Tcp.print("Time: ");
-    Tcp.println(millis());
-    Tcp.write(nullStr, sizeof(nullStr));
-    Serial.println("Done TCP Update");
+    tcpStatusUpdate();
+    
     mTime = millis();
   }
 }
@@ -144,5 +120,72 @@ byte readControllerNES() {
   }
 
   return ~input;
+}
+
+void udpControllerUpdate(byte controller) {
+  //send the controller status to the server
+  packet[0] = controller;
+
+  Udp.beginPacket(remoteServer, remotePort);
+  Udp.write(packet, 1);
+  Udp.endPacket();
+}
+
+void tcpStatusUp() {
+  //Print on serial the status
+  Serial.print(millis()); //timestamp from boot
+  Serial.print(": ");
+  Serial.print("Sending TCP Update: ");
+
+  //Send a status message to the TCP side to let it know we are still here
+  //TODO: come up with a better status message
+  Tcp.print("Time: ");
+  Tcp.println(millis());
+  Tcp.write(nullStr, sizeof(nullStr));
+  
+  Serial.println("Done TCP Update");
+}
+
+void tcpStatusUpdate() {
+  //And send/recieve configs with server
+  
+  Serial.print(millis()); //timestamp from boot
+  Serial.println(": Connected to TCP server, sending config");
+  
+  Tcp.print(jsonString);
+  Tcp.write(nullStr, sizeof(nullStr));
+
+  Serial.print(millis()); //timestamp from boot
+  Serial.println(": Done sending TCP data");
+
+  //See if we get a response
+  String back = Tcp.readStringUntil('\x00');
+  Serial.print(millis());
+  Serial.print(": Result: ");
+  Serial.println(back);
+
+  //TODO: decode return data/back
+}
+
+void serialPrintStatus(byte controller) {
+  //Do serial output of the controller status
+  Serial.print(millis()); //timestamp from boot
+  Serial.print(": ");
+  if (controller & LEFT)    Serial.print("LEFT   : "); else Serial.print("       : ");
+  if (controller & RIGHT)   Serial.print("RIGHT  : "); else Serial.print("       : ");
+  if (controller & UP)      Serial.print("UP     : "); else Serial.print("       : ");
+  if (controller & DOWN)    Serial.print("DOWN   : "); else Serial.print("       : ");
+  if (controller & BUTTONA) Serial.print("A      : "); else Serial.print("       : ");
+  if (controller & BUTTONB) Serial.print("B      : "); else Serial.print("       : ");
+  if (controller & START)   Serial.print("START  : "); else Serial.print("       : ");
+  if (controller & SELECT)  Serial.print("SELECT : "); else Serial.print("       : ");
+  if (controller == 0 )     Serial.print("NONE   : "); else Serial.print("       : ");
+  
+  Serial.print("0x");
+  Serial.print(controller, HEX);
+  Serial.print(": D: ");
+  Serial.print(controller);
+  
+  Serial.println("");
 }
 
