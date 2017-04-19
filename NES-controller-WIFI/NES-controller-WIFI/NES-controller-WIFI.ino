@@ -9,7 +9,7 @@ char packet[255];
 const char* ssid = "";
 const char* password = "";
 //IPAddress remoteServer(10, 51, 11, 116);
-IPAddress remoteServer(10, 51, 11, 120);
+IPAddress remoteServer(10, 51, 11, 127);
 unsigned int remotePort = 7869;
 
 //Static config information to send to the server to allow it to understand the data format we will use
@@ -36,9 +36,12 @@ const uint8_t nullStr[] = {0x00};
 #define BUTTONB   0b01000000
 #define BUTTONA   0b10000000
 
+#define RESEND    2   //each press is resent up to this many times
 
 //store the last state of the controller to detect only changes in state
 byte last = 0xff;
+
+byte sent = 0;
 
 void setup() {
   //First we setup serial for debug/input as needed.
@@ -86,16 +89,22 @@ void loop() {
     last = controller;
 
     udpControllerUpdate(controller);
+
+    sent = 1;
+  } else if (sent < RESEND) {
+    //resend the last controller state a few times if no new status came in
+    sent++;
+    udpControllerUpdate(controller);
   }
   
-  if (mTime + 30000 < millis()){
+  /*if (mTime + 30000 < millis()){
     //more then 30 seconds since last tcp send
     //TODO: make that configurable by server
     //TODO: take into account number wrapping over
     tcpStatusUpdate();
     
     mTime = millis();
-  }
+  }*/
 }
 
 byte readControllerNES() {

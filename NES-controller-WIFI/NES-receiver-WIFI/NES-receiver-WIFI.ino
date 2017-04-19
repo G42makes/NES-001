@@ -1,3 +1,5 @@
+//Note, this works best with the ESP8266 clocked to 160MHz, it's more likely to get the interrupts done properly.
+
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
@@ -69,16 +71,19 @@ void loop() {
   if(packetSize) {
     //we have data
     Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
-    controller = packetBuffer[0];
+    //We invert it(~) because NES buttons are active LOW(ie 0 is active, 1 is inactive)
+    // but we prefer to transmit with the more logical active HIGH(1 is active, 0 is inactive)
+    controller = ~packetBuffer[0];
+
+    //Debug, uninvert it for this code
+    serialPrintStatus(~controller);
   }
 }
 
 //need an ISR for the latch pin
 void latchISR() {
   //grab a copy of the current controller status
-  //We invert it(~) because NES buttons are active LOW(ie 0 is active, 1 is inactive)
-  // but we prefer to transmit with the more logical active HIGH(1 is active, 0 is inactive)
-  current = ~controller;
+  current = controller;
 
   //Since we will be clocking out our data using an interrupt, we need to keep track of our bits
   currentBit = 7;
@@ -95,6 +100,33 @@ void clockISR() {
   //The '--currentBit' decrements the value, puts it back and then uses it,
   //  if you do the -- after, it uses the number and then reduces it
   //Otherwise, the same as in the latch ISR
-  if (currentBit) digitalWrite(DATA, current >> --currentBit & 1);
+  if (currentBit) { 
+    digitalWrite(DATA, current >> --currentBit & 1);
+  } else {
+    digitalWrite(DATA, HIGH); //Need to leave the DATA line high
+  }
 }
+
+void serialPrintStatus(byte controller) {
+  //Do serial output of the controller status
+  Serial.print(millis()); //timestamp from boot
+  Serial.print(": ");
+  if (controller & LEFT)    Serial.print("LEFT   : "); else Serial.print("       : ");
+  if (controller & RIGHT)   Serial.print("RIGHT  : "); else Serial.print("       : ");
+  if (controller & UP)      Serial.print("UP     : "); else Serial.print("       : ");
+  if (controller & DOWN)    Serial.print("DOWN   : "); else Serial.print("       : ");
+  if (controller & BUTTONA) Serial.print("A      : "); else Serial.print("       : ");
+  if (controller & BUTTONB) Serial.print("B      : "); else Serial.print("       : ");
+  if (controller & START)   Serial.print("START  : "); else Serial.print("       : ");
+  if (controller & SELECT)  Serial.print("SELECT : "); else Serial.print("       : ");
+  if (controller == 0 )     Serial.print("NONE   : "); else Serial.print("       : ");
+  
+  Serial.print("0x");
+  Serial.print(controller, HEX);
+  Serial.print(": D: ");
+  Serial.print(controller);
+  
+  Serial.println("");
+}
+
 
